@@ -1,0 +1,5 @@
+{
+  "name": "Gemini AI Translator",
+  "description": "A high-quality translation tool with Text-to-Speech capabilities powered by Google Gemini 2.5 Flash models.",
+  "requestFramePermissions": []
+}
