@@ -9,6 +9,84 @@ interface SettingsModalProps {
   onSave: (settings: AppSettings) => void;
 }
 
+interface ConfigFormProps {
+  type: 'translation' | 'tts';
+  config: AIServiceConfig;
+  onChange: (type: 'translation' | 'tts', key: keyof AIServiceConfig, value: string) => void;
+}
+
+const ConfigForm: React.FC<ConfigFormProps> = ({ type, config, onChange }) => {
+  const isGemini = config.provider === 'gemini';
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+        <div className="flex gap-2">
+          {(['gemini', 'openai'] as ProviderType[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => onChange(type, 'provider', p)}
+              className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors capitalize ${
+                config.provider === p
+                  ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+          <Key size={14} />
+          API Key
+        </label>
+        <input
+          type="password"
+          value={config.apiKey}
+          onChange={(e) => onChange(type, 'apiKey', e.target.value)}
+          placeholder={isGemini ? "Use default (Env) or enter key" : "sk-..."}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+        />
+        <p className="mt-1 text-xs text-gray-400">
+          Leave empty to use default environment variable if available.
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+          <Globe size={14} />
+          Base URL (Optional)
+        </label>
+        <input
+          type="text"
+          value={config.baseUrl}
+          onChange={(e) => onChange(type, 'baseUrl', e.target.value)}
+          placeholder={isGemini ? "Default" : "https://api.openai.com/v1"}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+          <Server size={14} />
+          Model Name
+        </label>
+        <input
+          type="text"
+          value={config.model}
+          onChange={(e) => onChange(type, 'model', e.target.value)}
+          placeholder={type === 'translation' ? (isGemini ? 'gemini-2.5-flash' : 'gpt-3.5-turbo') : (isGemini ? 'gemini-2.5-flash-preview-tts' : 'tts-1')}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
+        />
+      </div>
+    </div>
+  );
+};
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -43,79 +121,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSave = () => {
     onSave(localSettings);
     onClose();
-  };
-
-  const ConfigForm = ({ type }: { type: 'translation' | 'tts' }) => {
-    const config = localSettings[type];
-    const isGemini = config.provider === 'gemini';
-
-    return (
-      <div className="space-y-4 animate-fade-in">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
-          <div className="flex gap-2">
-            {(['gemini', 'openai'] as ProviderType[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => handleConfigChange(type, 'provider', p)}
-                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors capitalize ${
-                  config.provider === p
-                    ? 'bg-blue-50 border-blue-200 text-blue-700'
-                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-            <Key size={14} />
-            API Key
-          </label>
-          <input
-            type="password"
-            value={config.apiKey}
-            onChange={(e) => handleConfigChange(type, 'apiKey', e.target.value)}
-            placeholder={isGemini ? "Use default (Env) or enter key" : "sk-..."}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-          />
-          <p className="mt-1 text-xs text-gray-400">
-            Leave empty to use default environment variable if available.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-            <Globe size={14} />
-            Base URL (Optional)
-          </label>
-          <input
-            type="text"
-            value={config.baseUrl}
-            onChange={(e) => handleConfigChange(type, 'baseUrl', e.target.value)}
-            placeholder={isGemini ? "Default" : "https://api.openai.com/v1"}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-            <Server size={14} />
-            Model Name
-          </label>
-          <input
-            type="text"
-            value={config.model}
-            onChange={(e) => handleConfigChange(type, 'model', e.target.value)}
-            placeholder={type === 'translation' ? (isGemini ? 'gemini-2.5-flash' : 'gpt-3.5-turbo') : (isGemini ? 'gemini-2.5-flash-preview-tts' : 'tts-1')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
-          />
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -159,7 +164,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Content */}
         <div className="p-5 overflow-y-auto flex-1">
-          <ConfigForm type={activeTab} />
+          <ConfigForm
+            type={activeTab}
+            config={localSettings[activeTab]}
+            onChange={handleConfigChange}
+          />
         </div>
 
         {/* Footer */}
