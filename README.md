@@ -2,6 +2,8 @@
 
 Modern web translator that uses Gemini (default) or OpenAI for text translation and text-to-speech, with configurable models and playback controls.
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/duanyongcheng/ai-translator&project-name=ai-translator&repository-name=ai-translator&env=GEMINI_API_KEY&envDescription=Gemini%20API%20key%20for%20translation%20and%20TTS)
+
 ## Features
 - Automatic or manual source language selection with swap control.
 - Translation output with copy, audio playback, and loop controls (count + interval).
