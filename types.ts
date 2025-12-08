@@ -3,13 +3,22 @@ export interface Language {
   name: string;
 }
 
+export interface HistoryItem {
+  id: string;
+  sourceText: string;
+  translatedText: string;
+  sourceLang: string;
+  targetLang: string;
+  timestamp: number;
+}
+
 export interface LoopSettings {
   enabled: boolean;
   count: number;
   interval: number;
 }
 
-export type ProviderType = 'gemini' | 'openai';
+export type ProviderType = "gemini" | "openai";
 
 export interface AIServiceConfig {
   provider: ProviderType;
@@ -34,9 +43,9 @@ export interface TranslationState {
 }
 
 export enum TTSVoice {
-  Puck = 'Puck',
-  Charon = 'Charon',
-  Kore = 'Kore',
-  Fenrir = 'Fenrir',
-  Zephyr = 'Zephyr'
+  Puck = "Puck",
+  Charon = "Charon",
+  Kore = "Kore",
+  Fenrir = "Fenrir",
+  Zephyr = "Zephyr",
 }

@@ -1,23 +1,47 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRightLeft, Sparkles, Languages, Settings } from 'lucide-react';
-import { SUPPORTED_LANGUAGES, TARGET_LANGUAGES } from './constants';
-import { LanguageSelector } from './components/LanguageSelector';
-import { TranslationBox } from './components/TranslationBox';
-import { SettingsModal } from './components/SettingsModal';
-import { translateText, generateTTS, playAudioBuffer, DEFAULT_SETTINGS } from './services/aiService';
-import { TranslationState, LoopSettings, AppSettings } from './types';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  ArrowRightLeft,
+  Sparkles,
+  Languages,
+  Settings,
+  Clock,
+} from "lucide-react";
+import { SUPPORTED_LANGUAGES, TARGET_LANGUAGES } from "./constants";
+import { LanguageSelector } from "./components/LanguageSelector";
+import { TranslationBox } from "./components/TranslationBox";
+import { SettingsModal } from "./components/SettingsModal";
+import {
+  translateText,
+  generateTTS,
+  playAudioBuffer,
+  DEFAULT_SETTINGS,
+} from "./services/aiService";
+import {
+  TranslationState,
+  LoopSettings,
+  AppSettings,
+  HistoryItem,
+} from "./types";
+import { HistoryPanel } from "./components/HistoryPanel";
+
+const HISTORY_KEY = "gemini-translator-history";
+const MAX_HISTORY = 50;
 
 function App() {
-  const [sourceLang, setSourceLang] = useState('auto');
-  const [targetLang, setTargetLang] = useState('zh-CN');
-  
+  const [sourceLang, setSourceLang] = useState("auto");
+  const [targetLang, setTargetLang] = useState("zh-CN");
+
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
+  // History State
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
   const [state, setState] = useState<TranslationState>({
-    inputText: '',
-    translatedText: '',
+    inputText: "",
+    translatedText: "",
     isTranslating: false,
     isSpeakingInput: false,
     isSpeakingOutput: false,
@@ -26,12 +50,12 @@ function App() {
       enabled: true,
       count: 1,
       interval: 1.0,
-    }
+    },
   });
 
   // Load settings from local storage on mount
   useEffect(() => {
-    const saved = localStorage.getItem('gemini-translator-settings');
+    const saved = localStorage.getItem("gemini-translator-settings");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -42,9 +66,75 @@ function App() {
     }
   }, []);
 
+  // Load history from local storage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(HISTORY_KEY);
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse history", e);
+      }
+    }
+  }, []);
+
   const saveSettings = (newSettings: AppSettings) => {
     setAppSettings(newSettings);
-    localStorage.setItem('gemini-translator-settings', JSON.stringify(newSettings));
+    localStorage.setItem(
+      "gemini-translator-settings",
+      JSON.stringify(newSettings)
+    );
+  };
+
+  // History helpers
+  const addToHistory = (sourceText: string, translatedText: string) => {
+    const newItem: HistoryItem = {
+      id: Date.now().toString(),
+      sourceText,
+      translatedText,
+      sourceLang,
+      targetLang,
+      timestamp: Date.now(),
+    };
+
+    setHistory((prev) => {
+      // 去重：相同源文本+语言对不重复存
+      const filtered = prev.filter(
+        (item) =>
+          !(
+            item.sourceText === sourceText &&
+            item.sourceLang === sourceLang &&
+            item.targetLang === targetLang
+          )
+      );
+      const updated = [newItem, ...filtered].slice(0, MAX_HISTORY);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem(HISTORY_KEY);
+  };
+
+  const deleteHistoryItem = (id: string) => {
+    setHistory((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const selectHistoryItem = (item: HistoryItem) => {
+    setSourceLang(item.sourceLang);
+    setTargetLang(item.targetLang);
+    setState((prev) => ({
+      ...prev,
+      inputText: item.sourceText,
+      translatedText: item.translatedText,
+    }));
+    setIsHistoryOpen(false);
   };
 
   // Refs to control playback cancellation
@@ -52,7 +142,9 @@ function App() {
   const isCancelledRef = useRef<boolean>(false);
 
   // Cache for TTS Audio Buffers to avoid re-fetching on loop or replay
-  const audioCacheRef = useRef<{ text: string; buffer: AudioBuffer } | null>(null);
+  const audioCacheRef = useRef<{ text: string; buffer: AudioBuffer } | null>(
+    null
+  );
 
   // Debounce translation
   useEffect(() => {
@@ -60,7 +152,7 @@ function App() {
       if (state.inputText.trim()) {
         handleTranslate();
       } else {
-        setState(prev => ({ ...prev, translatedText: '' }));
+        setState((prev) => ({ ...prev, translatedText: "" }));
       }
     }, 1000); // 1 second debounce
 
@@ -71,41 +163,48 @@ function App() {
   const handleTranslate = async () => {
     if (!state.inputText.trim()) return;
 
-    setState(prev => ({ ...prev, isTranslating: true, error: null }));
+    setState((prev) => ({ ...prev, isTranslating: true, error: null }));
 
     try {
       const result = await translateText(
-        state.inputText, 
-        sourceLang, 
-        targetLang.split('-')[0],
+        state.inputText,
+        sourceLang,
+        targetLang.split("-")[0],
         appSettings // Pass settings
-      ); 
-      
+      );
+
       // Clear audio cache when new translation arrives
       audioCacheRef.current = null;
-      
-      setState(prev => ({ ...prev, translatedText: result, isTranslating: false }));
+
+      setState((prev) => ({
+        ...prev,
+        translatedText: result,
+        isTranslating: false,
+      }));
+
+      // Add to history
+      addToHistory(state.inputText, result);
     } catch (err: any) {
-      setState(prev => ({ 
-        ...prev, 
-        error: err.message || "Failed to translate. Check your API settings.", 
-        isTranslating: false 
+      setState((prev) => ({
+        ...prev,
+        error: err.message || "Failed to translate. Check your API settings.",
+        isTranslating: false,
       }));
     }
   };
 
   const handleSwapLanguages = () => {
-    if (sourceLang === 'auto') {
-        setSourceLang(targetLang);
-        setTargetLang('en');
+    if (sourceLang === "auto") {
+      setSourceLang(targetLang);
+      setTargetLang("en");
     } else {
-        setSourceLang(targetLang);
-        setTargetLang(sourceLang);
+      setSourceLang(targetLang);
+      setTargetLang(sourceLang);
     }
-    
+
     audioCacheRef.current = null;
-    
-    setState(prev => ({
+
+    setState((prev) => ({
       ...prev,
       inputText: prev.translatedText,
       translatedText: prev.inputText,
@@ -117,23 +216,23 @@ function App() {
     if (stopPlaybackRef.current) {
       stopPlaybackRef.current();
     }
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       isSpeakingInput: false,
-      isSpeakingOutput: false
+      isSpeakingOutput: false,
     }));
   };
 
   const handleSpeak = async (text: string, isInput: boolean) => {
     if (!text) return;
-    
+
     stopAudio();
     isCancelledRef.current = false;
 
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       isSpeakingInput: isInput,
-      isSpeakingOutput: !isInput
+      isSpeakingOutput: !isInput,
     }));
 
     try {
@@ -156,31 +255,30 @@ function App() {
 
         const audioControl = playAudioBuffer(buffer);
         stopPlaybackRef.current = audioControl.stop;
-        
+
         await audioControl.promise;
 
         if (i < loops - 1 && !isCancelledRef.current) {
-          await new Promise<void>(resolve => {
+          await new Promise<void>((resolve) => {
             const timeoutId = setTimeout(resolve, intervalMs);
             stopPlaybackRef.current = () => {
-               clearTimeout(timeoutId);
-               resolve();
+              clearTimeout(timeoutId);
+              resolve();
             };
           });
         }
       }
-
     } catch (e: any) {
       console.error(e);
       if (!isCancelledRef.current) {
-        alert(`Audio Error: ${e.message || 'Could not play audio'}`);
+        alert(`Audio Error: ${e.message || "Could not play audio"}`);
       }
     } finally {
       if (!isCancelledRef.current) {
-         setState(prev => ({
+        setState((prev) => ({
           ...prev,
           isSpeakingInput: false,
-          isSpeakingOutput: false
+          isSpeakingOutput: false,
         }));
       }
       stopPlaybackRef.current = null;
@@ -188,18 +286,27 @@ function App() {
   };
 
   const updateLoopSettings = (newSettings: LoopSettings) => {
-    setState(prev => ({ ...prev, loopSettings: newSettings }));
+    setState((prev) => ({ ...prev, loopSettings: newSettings }));
   };
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans selection:bg-blue-200 flex flex-col">
-      
       {/* Settings Modal */}
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
         settings={appSettings}
         onSave={saveSettings}
+      />
+
+      {/* History Panel */}
+      <HistoryPanel
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        history={history}
+        onSelect={selectHistoryItem}
+        onClear={clearHistory}
+        onDelete={deleteHistoryItem}
       />
 
       {/* Navbar */}
@@ -215,7 +322,14 @@ function App() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <button 
+              <button
+                onClick={() => setIsHistoryOpen(true)}
+                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                title="历史记录"
+              >
+                <Clock size={22} />
+              </button>
+              <button
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
                 title="Settings"
@@ -228,91 +342,104 @@ function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 w-full max-w-7xl mx-auto md:px-6 lg:px-8 py-0 md:py-8 flex flex-col">
-        
+      <main className="flex-1 w-full max-w-7xl mx-auto md:px-6 lg:px-8 flex flex-col md:py-8">
         {state.error && (
-          <div className="mx-4 mt-4 md:mx-0 mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm animate-fade-in" role="alert">
+          <div
+            className="mx-4 mt-4 md:mx-0 mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm animate-fade-in"
+            role="alert"
+          >
             <span className="block sm:inline">{state.error}</span>
           </div>
         )}
 
         <div className="bg-white md:rounded-3xl md:shadow-xl md:shadow-gray-200/50 md:border border-gray-100 overflow-hidden flex flex-col md:block flex-1 md:flex-none">
-          
           <div className="sticky top-16 md:static z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100 p-2 md:p-4 shadow-sm md:shadow-none">
             <div className="flex items-center justify-between gap-2 md:gap-4">
               <div className="flex-1 min-w-0">
-                <LanguageSelector 
-                  label="From" 
-                  languages={SUPPORTED_LANGUAGES} 
-                  selectedCode={sourceLang} 
-                  onSelect={setSourceLang} 
+                <LanguageSelector
+                  label="From"
+                  languages={SUPPORTED_LANGUAGES}
+                  selectedCode={sourceLang}
+                  onSelect={setSourceLang}
                 />
               </div>
-              <button 
+              <button
                 onClick={handleSwapLanguages}
                 className="p-2 md:p-3 rounded-full bg-gray-50 md:bg-transparent hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition-all active:scale-95 border border-gray-200 md:border-transparent"
               >
                 <ArrowRightLeft size={16} className="md:w-5 md:h-5" />
               </button>
               <div className="flex-1 min-w-0">
-                <LanguageSelector 
-                  label="To" 
-                  languages={TARGET_LANGUAGES} 
-                  selectedCode={targetLang} 
-                  onSelect={setTargetLang} 
+                <LanguageSelector
+                  label="To"
+                  languages={TARGET_LANGUAGES}
+                  selectedCode={targetLang}
+                  onSelect={setTargetLang}
                 />
               </div>
             </div>
           </div>
 
           <div className="flex flex-col md:grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 flex-1">
-            
             {/* Input */}
-            <div className="min-h-[40vh] md:min-h-[500px] md:h-[calc(100vh-280px)]">
+            <div className="flex-1 min-h-[30vh] md:min-h-[500px] md:h-[calc(100vh-280px)]">
               <TranslationBox
                 value={state.inputText}
-                onChange={(val) => setState(prev => ({ ...prev, inputText: val }))}
-                onClear={() => setState(prev => ({ ...prev, inputText: '', translatedText: '' }))}
+                onChange={(val) =>
+                  setState((prev) => ({ ...prev, inputText: val }))
+                }
+                onClear={() =>
+                  setState((prev) => ({
+                    ...prev,
+                    inputText: "",
+                    translatedText: "",
+                  }))
+                }
                 placeholder="Enter text..."
                 onPlayAudio={() => handleSpeak(state.inputText, true)}
                 onStopAudio={stopAudio}
                 isPlaying={state.isSpeakingInput}
                 headerContent={
-                    <span className="text-xs md:text-sm font-medium text-gray-500 uppercase tracking-wide">Source</span>
+                  <span className="text-xs md:text-sm font-medium text-gray-500 uppercase tracking-wide">
+                    Source
+                  </span>
                 }
               />
             </div>
 
             {/* Output */}
-            <div className="min-h-[40vh] md:min-h-[500px] md:h-[calc(100vh-280px)] bg-gray-50/30">
+            <div className="flex-1 min-h-[30vh] md:min-h-[500px] md:h-[calc(100vh-280px)] bg-gray-50/30">
               <TranslationBox
                 value={state.translatedText}
                 readOnly
-                placeholder={state.isTranslating ? "Translating..." : "Translation"}
+                placeholder={
+                  state.isTranslating ? "Translating..." : "Translation"
+                }
                 onPlayAudio={() => handleSpeak(state.translatedText, false)}
                 onStopAudio={stopAudio}
                 isPlaying={state.isSpeakingOutput}
                 loopSettings={state.loopSettings}
                 onLoopSettingsChange={updateLoopSettings}
                 headerContent={
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs md:text-sm font-medium text-blue-600 uppercase tracking-wide">Result</span>
-                        {state.isTranslating && (
-                            <div className="flex items-center gap-1 text-[10px] md:text-xs text-blue-400">
-                                <Sparkles size={10} className="animate-pulse" />
-                                <span>Processing...</span>
-                            </div>
-                        )}
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs md:text-sm font-medium text-blue-600 uppercase tracking-wide">
+                      Result
+                    </span>
+                    {state.isTranslating && (
+                      <div className="flex items-center gap-1 text-[10px] md:text-xs text-blue-400">
+                        <Sparkles size={10} className="animate-pulse" />
+                        <span>Processing...</span>
+                      </div>
+                    )}
+                  </div>
                 }
               />
             </div>
-
           </div>
         </div>
       </main>
 
-      <footer className="py-6 text-center text-xs text-gray-400 bg-gray-50">
+      <footer className="hidden md:block py-6 text-center text-xs text-gray-400 bg-gray-50">
         <p>AI Translation Tool</p>
       </footer>
     </div>
