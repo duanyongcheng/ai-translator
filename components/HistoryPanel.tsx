@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Trash2, Clock } from "lucide-react";
+import { X, Trash2, Clock, ChevronLeft } from "lucide-react";
 import { HistoryItem } from "../types";
 import { SUPPORTED_LANGUAGES } from "../constants";
 
@@ -41,17 +41,22 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-[100] flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white shadow-xl flex flex-col animate-slide-in-right">
+      <div className="relative w-full sm:max-w-md bg-white shadow-xl flex flex-col animate-slide-in-right h-full">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <Clock size={20} className="text-blue-600" />
+            <button
+              onClick={onClose}
+              className="p-2 -ml-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            >
+              <ChevronLeft size={24} />
+            </button>
             <h2 className="text-lg font-semibold text-gray-800">历史记录</h2>
             <span className="text-sm text-gray-400">({history.length})</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {history.length > 0 && (
               <button
                 onClick={onClear}
@@ -61,12 +66,6 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
                 <Trash2 size={18} />
               </button>
             )}
-            <button
-              onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X size={20} />
-            </button>
           </div>
         </div>
 

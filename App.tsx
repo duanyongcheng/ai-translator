@@ -5,6 +5,11 @@ import {
   Languages,
   Settings,
   Clock,
+  Volume2,
+  X,
+  Copy,
+  Repeat,
+  StopCircle,
 } from "lucide-react";
 import { SUPPORTED_LANGUAGES, TARGET_LANGUAGES } from "./constants";
 import { LanguageSelector } from "./components/LanguageSelector";
@@ -12,7 +17,8 @@ import { TranslationBox } from "./components/TranslationBox";
 import { SettingsModal } from "./components/SettingsModal";
 import {
   translateText,
-  generateTTS,
+  generateTTSRaw,
+  decodeRawAudio,
   playAudioBuffer,
   DEFAULT_SETTINGS,
 } from "./services/aiService";
@@ -23,13 +29,14 @@ import {
   HistoryItem,
 } from "./types";
 import { HistoryPanel } from "./components/HistoryPanel";
+import { getCachedAudio, setCachedAudio } from "./services/audioCache";
 
 const HISTORY_KEY = "gemini-translator-history";
 const MAX_HISTORY = 50;
 
 function App() {
   const [sourceLang, setSourceLang] = useState("auto");
-  const [targetLang, setTargetLang] = useState("zh-CN");
+  const [targetLang, setTargetLang] = useState("en");
 
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -127,6 +134,7 @@ function App() {
   };
 
   const selectHistoryItem = (item: HistoryItem) => {
+    skipTranslateRef.current = true; // 标记跳过翻译
     setSourceLang(item.sourceLang);
     setTargetLang(item.targetLang);
     setState((prev) => ({
@@ -146,8 +154,17 @@ function App() {
     null
   );
 
+  // 跳过翻译标记（从历史记录选择时使用）
+  const skipTranslateRef = useRef(false);
+
   // Debounce translation
   useEffect(() => {
+    // 如果是从历史记录选择的，跳过翻译
+    if (skipTranslateRef.current) {
+      skipTranslateRef.current = false;
+      return;
+    }
+
     const timer = setTimeout(() => {
       if (state.inputText.trim()) {
         handleTranslate();
@@ -241,12 +258,23 @@ function App() {
 
       let buffer: AudioBuffer;
 
-      // Simple cache check: matches text AND current provider config (implicitly by invalidating on settings change if we wanted, but text match is usually enough)
-      // Note: If user changes voice model, cache might be stale. For simplicity, we assume text is key.
+      // 先检查内存缓存
       if (audioCacheRef.current?.text === text) {
         buffer = audioCacheRef.current.buffer;
       } else {
-        buffer = await generateTTS(text, appSettings);
+        // 再检查 IndexedDB 持久化缓存
+        const cached = await getCachedAudio(text);
+        if (cached) {
+          // 从缓存解码，使用保存的格式
+          buffer = await decodeRawAudio(cached.data, cached.format);
+        } else {
+          // 请求新的 TTS
+          const { data, format } = await generateTTSRaw(text, appSettings);
+          buffer = await decodeRawAudio(data, format);
+          // 存入持久化缓存（包含格式信息）
+          await setCachedAudio(text, data, format);
+        }
+        // 更新内存缓存
         audioCacheRef.current = { text, buffer };
       }
 
@@ -345,16 +373,174 @@ function App() {
       <main className="flex-1 w-full max-w-7xl mx-auto md:px-6 lg:px-8 flex flex-col md:py-8">
         {state.error && (
           <div
-            className="mx-4 mt-4 md:mx-0 mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm animate-fade-in"
+            className="mx-4 mt-2 md:mx-0 md:mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg flex items-center gap-2 text-sm animate-fade-in"
             role="alert"
           >
             <span className="block sm:inline">{state.error}</span>
           </div>
         )}
 
-        <div className="bg-white md:rounded-3xl md:shadow-xl md:shadow-gray-200/50 md:border border-gray-100 overflow-hidden flex flex-col md:block flex-1 md:flex-none">
-          <div className="sticky top-16 md:static z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100 p-2 md:p-4 shadow-sm md:shadow-none">
-            <div className="flex items-center justify-between gap-2 md:gap-4">
+        {/* Mobile Layout */}
+        <div className="flex-1 flex flex-col md:hidden">
+          <div className="flex-1 bg-white m-3 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+            {/* Source Section */}
+            <div className="flex-1 flex flex-col p-4 min-h-0">
+              <LanguageSelector
+                label=""
+                languages={SUPPORTED_LANGUAGES}
+                selectedCode={sourceLang}
+                onSelect={setSourceLang}
+              />
+              <textarea
+                value={state.inputText}
+                onChange={(e) =>
+                  setState((prev) => ({ ...prev, inputText: e.target.value }))
+                }
+                placeholder="输入文本"
+                className="flex-1 w-full resize-none outline-none text-lg text-gray-800 placeholder-gray-300 mt-2 min-h-[80px]"
+              />
+            </div>
+
+            {/* Swap Button */}
+            <div className="flex justify-center py-2 border-y border-gray-100">
+              <button
+                onClick={handleSwapLanguages}
+                className="p-2 rounded-full text-blue-500 hover:bg-blue-50 active:scale-95 transition-all"
+              >
+                <ArrowRightLeft size={20} className="rotate-90" />
+              </button>
+            </div>
+
+            {/* Target Section */}
+            <div className="flex-1 flex flex-col p-4 bg-gray-50/50 min-h-0">
+              <LanguageSelector
+                label=""
+                languages={TARGET_LANGUAGES}
+                selectedCode={targetLang}
+                onSelect={setTargetLang}
+              />
+              <div className="flex-1 mt-2 min-h-[80px]">
+                {state.isTranslating ? (
+                  <div className="flex items-center gap-2 text-blue-400">
+                    <Sparkles size={16} className="animate-pulse" />
+                    <span>翻译中...</span>
+                  </div>
+                ) : (
+                  <p
+                    className={`text-lg ${
+                      state.translatedText ? "text-gray-800" : "text-gray-300"
+                    }`}
+                  >
+                    {state.translatedText || "翻译结果"}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Mobile Footer Actions */}
+            {(state.inputText || state.translatedText) && (
+              <div className="border-t border-gray-100 bg-white">
+                {/* Loop Settings Row */}
+                {state.translatedText && (
+                  <div className="flex items-center justify-center gap-4 px-4 py-2 bg-gray-50 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Repeat size={14} className="text-blue-500" />
+                      <span className="text-gray-500">次数</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={state.loopSettings.count}
+                        onChange={(e) =>
+                          updateLoopSettings({
+                            ...state.loopSettings,
+                            count: parseInt(e.target.value) || 1,
+                          })
+                        }
+                        className="w-12 px-2 py-1 rounded border border-gray-200 text-center text-gray-700"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-blue-500" />
+                      <span className="text-gray-500">间隔</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={state.loopSettings.interval}
+                        onChange={(e) =>
+                          updateLoopSettings({
+                            ...state.loopSettings,
+                            interval: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        className="w-12 px-2 py-1 rounded border border-gray-200 text-center text-gray-700"
+                      />
+                      <span className="text-gray-400">秒</span>
+                    </div>
+                  </div>
+                )}
+                {/* Action Buttons */}
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    {state.translatedText &&
+                      (state.isSpeakingOutput ? (
+                        <button
+                          onClick={stopAudio}
+                          className="p-2 rounded-full text-red-500 bg-red-50"
+                        >
+                          <StopCircle size={20} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() =>
+                            handleSpeak(state.translatedText, false)
+                          }
+                          className="p-2 rounded-full text-gray-500 hover:bg-gray-100"
+                        >
+                          <Volume2 size={20} />
+                        </button>
+                      ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {state.inputText && (
+                      <button
+                        onClick={() =>
+                          setState((prev) => ({
+                            ...prev,
+                            inputText: "",
+                            translatedText: "",
+                          }))
+                        }
+                        className="p-2 text-gray-400 hover:text-gray-600 rounded-full"
+                      >
+                        <X size={20} />
+                      </button>
+                    )}
+                    {state.translatedText && (
+                      <button
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(
+                            state.translatedText
+                          );
+                        }}
+                        className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"
+                      >
+                        <Copy size={20} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop Layout */}
+        <div className="hidden md:block bg-white md:rounded-3xl md:shadow-xl md:shadow-gray-200/50 md:border border-gray-100 overflow-hidden flex-1">
+          <div className="z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100 p-4">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <LanguageSelector
                   label="From"
@@ -365,9 +551,9 @@ function App() {
               </div>
               <button
                 onClick={handleSwapLanguages}
-                className="p-2 md:p-3 rounded-full bg-gray-50 md:bg-transparent hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition-all active:scale-95 border border-gray-200 md:border-transparent"
+                className="p-3 rounded-full hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition-all active:scale-95"
               >
-                <ArrowRightLeft size={16} className="md:w-5 md:h-5" />
+                <ArrowRightLeft size={20} />
               </button>
               <div className="flex-1 min-w-0">
                 <LanguageSelector
@@ -380,9 +566,9 @@ function App() {
             </div>
           </div>
 
-          <div className="flex flex-col md:grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 flex-1">
+          <div className="grid grid-cols-2 divide-x divide-gray-100">
             {/* Input */}
-            <div className="flex-1 min-h-[30vh] md:min-h-[500px] md:h-[calc(100vh-280px)]">
+            <div className="min-h-[500px] h-[calc(100vh-280px)]">
               <TranslationBox
                 value={state.inputText}
                 onChange={(val) =>
@@ -400,7 +586,7 @@ function App() {
                 onStopAudio={stopAudio}
                 isPlaying={state.isSpeakingInput}
                 headerContent={
-                  <span className="text-xs md:text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">
                     Source
                   </span>
                 }
@@ -408,7 +594,7 @@ function App() {
             </div>
 
             {/* Output */}
-            <div className="flex-1 min-h-[30vh] md:min-h-[500px] md:h-[calc(100vh-280px)] bg-gray-50/30">
+            <div className="min-h-[500px] h-[calc(100vh-280px)] bg-gray-50/30">
               <TranslationBox
                 value={state.translatedText}
                 readOnly
@@ -422,11 +608,11 @@ function App() {
                 onLoopSettingsChange={updateLoopSettings}
                 headerContent={
                   <div className="flex items-center gap-2">
-                    <span className="text-xs md:text-sm font-medium text-blue-600 uppercase tracking-wide">
+                    <span className="text-sm font-medium text-blue-600 uppercase tracking-wide">
                       Result
                     </span>
                     {state.isTranslating && (
-                      <div className="flex items-center gap-1 text-[10px] md:text-xs text-blue-400">
+                      <div className="flex items-center gap-1 text-xs text-blue-400">
                         <Sparkles size={10} className="animate-pulse" />
                         <span>Processing...</span>
                       </div>
