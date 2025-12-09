@@ -1,5 +1,7 @@
 # AI Translator
 
+English | [中文](./README_CN.md) | [日本語](./README_JA.md)
+
 Modern web translator that uses Gemini (default) or OpenAI for text translation and text-to-speech, with configurable models and playback controls.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/duanyongcheng/ai-translator&project-name=ai-translator&repository-name=ai-translator&env=GEMINI_API_KEY&envDescription=Gemini%20API%20key%20for%20translation%20and%20TTS)
@@ -7,8 +9,10 @@ Modern web translator that uses Gemini (default) or OpenAI for text translation 
 ## Features
 - Automatic or manual source language selection with swap control.
 - Translation output with copy, audio playback, and loop controls (count + interval).
+- Translation history with persistent storage (max 50 items).
+- TTS audio caching (IndexedDB) for instant replay without re-fetching.
 - Settings modal to switch providers (Gemini/OpenAI), models, base URLs, and API keys; settings persist in local storage.
-- Debounced translation, error messaging, and minimal UI built with React 19 + Vite + TypeScript.
+- Debounced translation, error messaging, and minimal UI built with React 19 + Vite + TypeScript + Tailwind CSS v4.
 
 ## Quickstart
 ```bash
@@ -29,9 +33,10 @@ npm run dev        # http://localhost:3000
 
 ## Project Structure
 - `index.tsx` — React entry mounting `App`.
-- `App.tsx` — main layout, translation flow, language swapping, playback orchestration, settings persistence.
-- `components/` — UI parts (`LanguageSelector`, `TranslationBox`, `SettingsModal`).
-- `services/aiService.ts` — translation + TTS logic for Gemini/OpenAI, audio caching/playback helpers.
+- `App.tsx` — main layout, translation flow, language swapping, playback orchestration, history management.
+- `components/` — UI parts (`LanguageSelector`, `TranslationBox`, `SettingsModal`, `HistoryPanel`).
+- `services/aiService.ts` — translation + TTS logic for Gemini/OpenAI, audio playback helpers.
+- `services/audioCache.ts` — IndexedDB persistent cache for TTS audio (max 50 entries, LRU eviction).
 - `services/audioUtils.ts` — PCM decoding helpers.
 - `constants.ts` — supported language lists.
 - `types.ts` — shared types and enums.
@@ -40,6 +45,8 @@ npm run dev        # http://localhost:3000
 ## Usage Notes
 - Ensure browser has permission for audio output; stop/play controls are per-pane.
 - Loop playback applies to translated output; adjust count/interval in the output panel.
+- Translation history accessible via clock icon; click to restore previous translations.
+- TTS audio is cached locally — replaying the same text is instant without API calls.
 - Errors surface as inline banner; check API key/model/base URL when requests fail.
 
 ## Contributing

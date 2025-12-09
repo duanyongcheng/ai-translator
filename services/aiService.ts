@@ -45,6 +45,19 @@ const getKey = (config: AIServiceConfig) => {
 
 const trimTrailingSlash = (url: string) => url.replace(/\/+$/, "");
 
+// Normalize base URL and auto-append version path
+const normalizeGeminiBaseUrl = (baseUrl: string) => {
+  const base = trimTrailingSlash(baseUrl);
+  // Remove trailing /v1beta or /v1 if user accidentally included it
+  return base.replace(/\/(v1beta|v1)$/, "");
+};
+
+const normalizeOpenAIBaseUrl = (baseUrl: string) => {
+  const base = trimTrailingSlash(baseUrl);
+  // Remove trailing /v1 if user accidentally included it
+  return base.replace(/\/v1$/, "");
+};
+
 // --- Translation Logic ---
 
 export const translateText = async (
@@ -125,7 +138,7 @@ const translateWithGeminiRest = async (
       "Missing Gemini API key. Set GEMINI_API_KEY in .env.local or provide it in Settings."
     );
   }
-  const base = trimTrailingSlash(config.baseUrl || "");
+  const base = normalizeGeminiBaseUrl(config.baseUrl || "");
   if (!base) {
     throw new Error(
       "Gemini base URL is empty. Clear it to use the official API or provide a valid self-hosted endpoint."
@@ -167,8 +180,8 @@ const translateWithOpenAI = async (
   systemPrompt: string,
   config: AIServiceConfig
 ) => {
-  const baseUrl = config.baseUrl || "https://api.openai.com/v1";
-  const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const base = normalizeOpenAIBaseUrl(config.baseUrl || "https://api.openai.com");
+  const url = `${base}/v1/chat/completions`;
   const apiKey = getKey(config);
 
   try {
@@ -275,8 +288,8 @@ const generateTTSOpenAI = async (
   config: AIServiceConfig,
   voiceName: string
 ) => {
-  const baseUrl = config.baseUrl || "https://api.openai.com/v1";
-  const url = `${baseUrl.replace(/\/+$/, "")}/audio/speech`;
+  const base = normalizeOpenAIBaseUrl(config.baseUrl || "https://api.openai.com");
+  const url = `${base}/v1/audio/speech`;
   const apiKey = getKey(config);
 
   // OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
@@ -327,7 +340,7 @@ const generateTTSGeminiRest = async (
       "Missing Gemini API key. Set GEMINI_API_KEY in .env.local or provide it in Settings."
     );
   }
-  const base = trimTrailingSlash(config.baseUrl || "");
+  const base = normalizeGeminiBaseUrl(config.baseUrl || "");
   if (!base) {
     throw new Error(
       "Gemini base URL is empty. Clear it to use the official API or provide a valid self-hosted endpoint."
@@ -336,25 +349,25 @@ const generateTTSGeminiRest = async (
 
   const url = `${base}/v1beta/models/${
     config.model || "gemini-2.5-flash-preview-tts"
-  }:generateContent?key=${apiKey}`;
+  }:generateContent`;
   const body = {
     contents: [{ parts: [{ text }] }],
-    // Top-level and generationConfig both request audio to satisfy proxies that expect either form.
-    responseModalities: ["AUDIO"],
     generationConfig: {
       responseModalities: ["AUDIO"],
-      responseMimeType: "audio/wav",
-    },
-    speechConfig: {
-      voiceConfig: {
-        prebuiltVoiceConfig: { voiceName },
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName },
+        },
       },
     },
   };
 
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify(body),
   });
 
@@ -374,6 +387,65 @@ const generateTTSGeminiRest = async (
   const audioContext = getAudioContext();
   return await decodeAudioData(decode(base64Audio), audioContext, 24000, 1);
 };
+
+const generateTTSGeminiRestRaw = async (
+  text: string,
+  config: AIServiceConfig,
+  voiceName: string
+): Promise<{ data: ArrayBuffer; format: "pcm" | "mp3" }> => {
+  const apiKey = getKey(config);
+  if (!apiKey) {
+    throw new Error(
+      "Missing Gemini API key. Set GEMINI_API_KEY in .env.local or provide it in Settings."
+    );
+  }
+  const base = normalizeGeminiBaseUrl(config.baseUrl || "");
+  if (!base) {
+    throw new Error(
+      "Gemini base URL is empty. Clear it to use the official API or provide a valid self-hosted endpoint."
+    );
+  }
+
+  const url = `${base}/v1beta/models/${
+    config.model || "gemini-2.5-flash-preview-tts"
+  }:generateContent`;
+  const body = {
+    contents: [{ parts: [{ text }] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName },
+        },
+      },
+    },
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini REST TTS error: ${res.status} ${errText}`);
+  }
+
+  const data = await res.json();
+  const base64Audio = data?.candidates?.[0]?.content?.parts?.find(
+    (p: any) => p.inlineData
+  )?.inlineData?.data;
+  if (!base64Audio) {
+    throw new Error("Gemini REST TTS error: empty audio response");
+  }
+
+  return { data: decode(base64Audio).buffer as ArrayBuffer, format: "pcm" };
+};
+
 // 获取原始音频数据（用于缓存）
 export const generateTTSRaw = async (
   text: string,
@@ -389,8 +461,8 @@ export const generateTTSRaw = async (
 
   if (config.provider === "openai") {
     // OpenAI 返回 MP3
-    const baseUrl = config.baseUrl || "https://api.openai.com/v1";
-    const url = `${baseUrl.replace(/\/+$/, "")}/audio/speech`;
+    const base = normalizeOpenAIBaseUrl(config.baseUrl || "https://api.openai.com");
+    const url = `${base}/v1/audio/speech`;
     const validVoices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
     const openaiVoice = validVoices.includes(voiceName.toLowerCase())
       ? voiceName.toLowerCase()
@@ -417,12 +489,18 @@ export const generateTTSRaw = async (
     return { data: await response.arrayBuffer(), format: "mp3" };
   } else {
     // Gemini 返回 PCM
-    const ai = new GoogleGenAI({ apiKey: getKey(config) });
     const geminiVoice = ["Puck", "Charon", "Kore", "Fenrir", "Zephyr"].includes(
       voiceName
     )
       ? voiceName
       : "Kore";
+
+    if (config.baseUrl) {
+      // Use REST API when custom baseUrl is set
+      return generateTTSGeminiRestRaw(text, config, geminiVoice);
+    }
+
+    const ai = new GoogleGenAI({ apiKey: getKey(config) });
 
     const response = await ai.models.generateContent({
       model: config.model || "gemini-2.5-flash-preview-tts",

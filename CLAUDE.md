@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI Translator is a React web application providing real-time text translation and text-to-speech using Google Gemini (default) or OpenAI APIs. Built with React 19, TypeScript, Vite, and Tailwind CSS (via CDN).
+AI Translator is a React web application providing real-time text translation and text-to-speech using Google Gemini (default) or OpenAI APIs. Built with React 19, TypeScript, Vite, and Tailwind CSS v4 (via Vite plugin).
 
 ## Development Commands
 
@@ -30,6 +30,10 @@ No automated tests or linting configured yet.
 
 **Dual-Provider Pattern:** `services/aiService.ts` abstracts Gemini and OpenAI behind unified interfaces for both translation and TTS. Provider selection determined by settings; fallback chain for API keys: `appSettings.apiKey` → `process.env.GEMINI_API_KEY` → `process.env.API_KEY`.
 
+**Audio Caching:** Two-layer system for TTS audio:
+- Memory cache (`audioCacheRef` in App.tsx) for instant replay
+- IndexedDB persistent cache (`services/audioCache.ts`) survives page refresh, max 50 entries with LRU eviction
+
 **Audio Processing:**
 - Gemini returns base64-encoded PCM (decoded via `audioUtils.ts`)
 - OpenAI returns MP3/WAV (browser native decode)
@@ -39,11 +43,13 @@ No automated tests or linting configured yet.
 
 | File | Purpose |
 |------|---------|
-| `App.tsx` | Main state hub, translation/playback orchestration |
+| `App.tsx` | Main state hub, translation/playback orchestration, history management |
 | `services/aiService.ts` | Translation + TTS logic for both providers |
+| `services/audioCache.ts` | IndexedDB persistent audio cache |
 | `services/audioUtils.ts` | PCM decoding helpers |
 | `components/SettingsModal.tsx` | Provider/model/API key configuration |
 | `components/TranslationBox.tsx` | Text areas with audio/loop controls |
+| `components/HistoryPanel.tsx` | Translation history sidebar |
 | `components/LanguageSelector.tsx` | Language dropdowns |
 | `types.ts` | Shared TypeScript interfaces |
 | `constants.ts` | Supported languages list |
@@ -54,8 +60,13 @@ No automated tests or linting configured yet.
 - **Components:** PascalCase, presentational only (no direct API calls)
 - **Functions/variables:** camelCase
 - **Constants:** SCREAMING_SNAKE_CASE
-- **Styling:** Tailwind utility classes inline (loaded via CDN in index.html)
+- **Styling:** Tailwind utility classes inline
 - **Commits:** Conventional Commits with scope (`feat(scope): summary`)
+
+## localStorage Keys
+
+- `gemini-translator-settings` — App settings (provider, API keys, models)
+- `gemini-translator-history` — Translation history (max 50 items)
 
 ## Environment
 
