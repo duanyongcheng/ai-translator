@@ -269,7 +269,7 @@ function App() {
           buffer = await decodeRawAudio(cached.data, cached.format);
         } else {
           // 请求新的 TTS
-          const { data, format } = await generateTTSRaw(text, appSettings);
+          const { data, format } = await generateTTSRaw(text, appSettings, appSettings.tts.voice);
           buffer = await decodeRawAudio(data, format);
           // 存入持久化缓存（包含格式信息）
           await setCachedAudio(text, data, format);

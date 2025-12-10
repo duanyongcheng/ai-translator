@@ -17,13 +17,18 @@ interface ConfigFormProps {
 
 const ConfigForm: React.FC<ConfigFormProps> = ({ type, config, onChange }) => {
   const isGemini = config.provider === 'gemini';
+  const isSiliconFlow = config.provider === 'siliconflow';
+  // TTS supports siliconflow, translation does not
+  const providers: ProviderType[] = type === 'tts'
+    ? ['gemini', 'openai', 'siliconflow']
+    : ['gemini', 'openai'];
 
   return (
     <div className="space-y-4 animate-fade-in">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
         <div className="flex gap-2">
-          {(['gemini', 'openai'] as ProviderType[]).map((p) => (
+          {providers.map((p) => (
             <button
               key={p}
               onClick={() => onChange(type, 'provider', p)}
@@ -48,7 +53,7 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ type, config, onChange }) => {
           type="password"
           value={config.apiKey}
           onChange={(e) => onChange(type, 'apiKey', e.target.value)}
-          placeholder={isGemini ? "Use default (Env) or enter key" : "sk-..."}
+          placeholder={isGemini ? "Use default (Env) or enter key" : isSiliconFlow ? "sf-..." : "sk-..."}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
         />
         <p className="mt-1 text-xs text-gray-400">
@@ -56,33 +61,83 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ type, config, onChange }) => {
         </p>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-          <Globe size={14} />
-          Base URL (Optional)
-        </label>
-        <input
-          type="text"
-          value={config.baseUrl}
-          onChange={(e) => onChange(type, 'baseUrl', e.target.value)}
-          placeholder={isGemini ? "Default" : "https://api.openai.com"}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
-        />
-      </div>
+      {!isSiliconFlow && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+            <Globe size={14} />
+            Base URL (Optional)
+          </label>
+          <input
+            type="text"
+            value={config.baseUrl}
+            onChange={(e) => onChange(type, 'baseUrl', e.target.value)}
+            placeholder={isGemini ? "Default" : "https://api.openai.com"}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
+          />
+        </div>
+      )}
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
-          <Server size={14} />
-          Model Name
-        </label>
-        <input
-          type="text"
-          value={config.model}
-          onChange={(e) => onChange(type, 'model', e.target.value)}
-          placeholder={type === 'translation' ? (isGemini ? 'gemini-2.5-flash' : 'gpt-3.5-turbo') : (isGemini ? 'gemini-2.5-flash-preview-tts' : 'tts-1')}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
-        />
-      </div>
+      {!isSiliconFlow && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+            <Server size={14} />
+            Model Name
+          </label>
+          <input
+            type="text"
+            value={config.model}
+            onChange={(e) => onChange(type, 'model', e.target.value)}
+            placeholder={type === 'translation' ? (isGemini ? 'gemini-2.5-flash' : 'gpt-3.5-turbo') : (isGemini ? 'gemini-2.5-flash-preview-tts' : 'tts-1')}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono"
+          />
+        </div>
+      )}
+
+      {type === 'tts' && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+            <Mic size={14} />
+            Voice
+          </label>
+          <select
+            value={config.voice || ''}
+            onChange={(e) => onChange(type, 'voice', e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+          >
+            {isGemini && (
+              <>
+                <option value="Kore">Kore (默认)</option>
+                <option value="Puck">Puck</option>
+                <option value="Charon">Charon</option>
+                <option value="Fenrir">Fenrir</option>
+                <option value="Zephyr">Zephyr</option>
+              </>
+            )}
+            {config.provider === 'openai' && (
+              <>
+                <option value="alloy">Alloy (默认)</option>
+                <option value="echo">Echo</option>
+                <option value="fable">Fable</option>
+                <option value="onyx">Onyx</option>
+                <option value="nova">Nova</option>
+                <option value="shimmer">Shimmer</option>
+              </>
+            )}
+            {isSiliconFlow && (
+              <>
+                <option value="anna">Anna - 沉稳女声 (默认)</option>
+                <option value="bella">Bella - 激情女声</option>
+                <option value="claire">Claire - 温柔女声</option>
+                <option value="diana">Diana - 欢快女声</option>
+                <option value="alex">Alex - 沉稳男声</option>
+                <option value="benjamin">Benjamin - 低沉男声</option>
+                <option value="charles">Charles - 磁性男声</option>
+                <option value="david">David - 欢快男声</option>
+              </>
+            )}
+          </select>
+        </div>
+      )}
     </div>
   );
 };

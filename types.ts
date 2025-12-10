@@ -18,13 +18,14 @@ export interface LoopSettings {
   interval: number;
 }
 
-export type ProviderType = "gemini" | "openai";
+export type ProviderType = "gemini" | "openai" | "siliconflow";
 
 export interface AIServiceConfig {
   provider: ProviderType;
   apiKey: string;
   baseUrl: string;
   model: string;
+  voice?: string;
 }
 
 export interface AppSettings {

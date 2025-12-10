@@ -228,14 +228,16 @@ export const generateTTS = async (
   const config = settings.tts;
   const apiKey = getKey(config);
 
-  if (config.provider === "gemini" && !apiKey) {
+  if ((config.provider === "gemini" || config.provider === "siliconflow") && !apiKey) {
     throw new Error(
-      "Missing Gemini API key. Set GEMINI_API_KEY in .env.local or provide it in Settings."
+      `Missing ${config.provider} API key. Provide it in Settings.`
     );
   }
 
   if (config.provider === "openai") {
     return generateTTSOpenAI(text, config, voiceName);
+  } else if (config.provider === "siliconflow") {
+    return generateTTSSiliconFlow(text, config, voiceName);
   } else {
     // For Gemini, we map 'alloy' etc to a default if it's passed from state default
     const geminiVoice = ["Puck", "Charon", "Kore", "Fenrir", "Zephyr"].includes(
@@ -325,6 +327,49 @@ const generateTTSOpenAI = async (
     return await audioContext.decodeAudioData(arrayBuffer);
   } catch (error) {
     console.error("OpenAI TTS error:", error);
+    throw error;
+  }
+};
+
+const generateTTSSiliconFlow = async (
+  text: string,
+  config: AIServiceConfig,
+  voiceName: string
+) => {
+  const apiKey = getKey(config);
+  const url = "https://api.siliconflow.cn/v1/audio/speech";
+
+  // SiliconFlow voices: alex, benjamin, charles, david, anna, bella, claire, diana
+  const validVoices = ["alex", "benjamin", "charles", "david", "anna", "bella", "claire", "diana"];
+  const sfVoice = validVoices.includes(voiceName.toLowerCase())
+    ? voiceName.toLowerCase()
+    : "anna";
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "FunAudioLLM/CosyVoice2-0.5B",
+        input: text,
+        voice: `fishaudio/fish-speech-1.4:${sfVoice}`,
+        response_format: "mp3",
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`SiliconFlow TTS Error: ${err}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const audioContext = getAudioContext();
+    return await audioContext.decodeAudioData(arrayBuffer);
+  } catch (error) {
+    console.error("SiliconFlow TTS error:", error);
     throw error;
   }
 };
@@ -455,8 +500,8 @@ export const generateTTSRaw = async (
   const config = settings.tts;
   const apiKey = getKey(config);
 
-  if (config.provider === "gemini" && !apiKey) {
-    throw new Error("Missing Gemini API key.");
+  if ((config.provider === "gemini" || config.provider === "siliconflow") && !apiKey) {
+    throw new Error(`Missing ${config.provider} API key.`);
   }
 
   if (config.provider === "openai") {
@@ -484,6 +529,34 @@ export const generateTTSRaw = async (
     if (!response.ok) {
       const err = await response.text();
       throw new Error(`OpenAI TTS Error: ${err}`);
+    }
+
+    return { data: await response.arrayBuffer(), format: "mp3" };
+  } else if (config.provider === "siliconflow") {
+    // SiliconFlow 返回 MP3
+    const url = "https://api.siliconflow.cn/v1/audio/speech";
+    const validVoices = ["alex", "benjamin", "charles", "david", "anna", "bella", "claire", "diana"];
+    const sfVoice = validVoices.includes(voiceName.toLowerCase())
+      ? voiceName.toLowerCase()
+      : "anna";
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "FunAudioLLM/CosyVoice2-0.5B",
+        input: text,
+        voice: `fishaudio/fish-speech-1.4:${sfVoice}`,
+        response_format: "mp3",
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`SiliconFlow TTS Error: ${err}`);
     }
 
     return { data: await response.arrayBuffer(), format: "mp3" };
